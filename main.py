@@ -1,62 +1,89 @@
 from dotenv import load_dotenv
-import os
 from datetime import datetime
+
 from langchain_mistralai import ChatMistralAI
 from langchain.tools import tool
 from langchain.agents import create_agent
-from langchain_core.prompts import ChatPromptTemplate
+
 load_dotenv()
 
+
 @tool
-def get_string_length(text:str)->int:
-    """return the exact number of character in a given string.
-    use this when the user asks for the length or character count of a text.
+def get_string_length(text: str) -> int:
+    """
+    Return the exact number of characters in a string.
+    Use when the user asks for character count or string length.
     """
     return len(text)
 
 
 @tool
-def analyze_message_tone(message:str)->str:
-    """analyze the emotional tone of a user's message.
-    Return exactly one of the these cotegories: 'funny','serious','angry',anxious'
+def analyze_message_tone(message: str) -> str:
+    """
+    Analyze the emotional tone of a message.
+    Return one of:
+    funny, serious, angry, anxious, neutral
     """
     msg_lower = message.lower()
-    if any(w in msg_lower for w in ["anger","angry","mad","hate"]):return "angry"
-    if any(w in msg_lower for w in ["serious","urgent","deadline","asap"]):return "serious"
-    if any(w in msg_lower for w in ["comedy","laugh","joke","fun","funny"]):return "funny"
-    if any(w in msg_lower for w in ["anxiety","anxious","afraid","nervous"]):return "anxious"
+
+    if any(word in msg_lower for word in ["anger", "angry", "mad", "hate"]):
+        return "angry"
+
+    if any(word in msg_lower for word in ["serious", "urgent", "deadline", "asap"]):
+        return "serious"
+
+    if any(word in msg_lower for word in ["comedy", "laugh", "joke", "fun", "funny"]):
+        return "funny"
+
+    if any(word in msg_lower for word in ["anxiety", "anxious", "afraid", "nervous"]):
+        return "anxious"
+
     return "neutral"
 
+
 @tool
-def get_current_time(text:str)->str:
-    """returns current date and time.use this only when explicilty ask what time it is."""
+def get_current_time(_: str = "") -> str:
+    """
+    Return the current date and time.
+    Use only when the user explicitly asks for the time.
+    """
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-@tool
-def get_text_statictics(text:str)->dict:
-   """calculate words character and sentence count for a given text."""
-   return {
-       "word_count":len(text.split()),
-       "character_count":len(text),
-       "sentence_count":text.count('.') + text.count('!') + text.count('?')
-   }
 
-tools=[
-    get_text_statictics,
-    get_current_time,
+@tool
+def get_text_statistics(text: str) -> dict:
+    """
+    Calculate word, character, and sentence counts.
+    """
+    return {
+        "word_count": len(text.split()),
+        "character_count": len(text),
+        "sentence_count": text.count(".") + text.count("!") + text.count("?"),
+    }
+
+
+tools = [
+    get_string_length,
     analyze_message_tone,
-    get_string_length
+    get_current_time,
+    get_text_statistics,
 ]
 
-llm=ChatMistralAI(model_name="mistral-small-2603",temperature=0.3)
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system","You are an helpful ai assistant. use the provided tools to answer the user's question accurately.if a tool returns an error explain it to the user"),
-    ("human","{input}"),
-    
-])
+llm = ChatMistralAI(
+    model_name="mistral-small-2603",
+    temperature=0.3,
+)
 
-agent = create_agent(llm,tools,prompt)
+agent = create_agent(
+    model=llm,
+    tools=tools,
+    system_prompt="""
+    You are a helpful AI assistant.
+    Use tools whenever appropriate.
+    If a tool fails, explain the error to the user.
+    """,
+)
 
 
 if __name__ == "__main__":
@@ -65,15 +92,29 @@ if __name__ == "__main__":
     while True:
         query = input("\nYou: ")
 
-        if query.lower() == "exit":
+        if query.lower() in ["exit", "quit"]:
+            print("Goodbye!")
             break
 
         try:
-            result = agent.invoke({
-                "input": query
-            })
+            result = agent.invoke(
+                {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": query,
+                        }
+                    ]
+                }
+            )
 
-            print("\nAssistant:", result["output"])
+
+            # Usually the final response is the last message
+            if "messages" in result:
+                print(
+                    "\nAssistant:",
+                    result["messages"][-1].content
+                )
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"\nError: {e}")
